@@ -1,0 +1,343 @@
+x-airflow-common:
+  &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile.airflow
+  image: custom-airflow:2.10.5
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./config:/opt/airflow/config
+    - ./plugins:/opt/airflow/plugins
+
+  user: "${AIRFLOW_UID:-50000}:0"
+
+  depends_on:
+    &airflow-common-depends-on
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+
+services:
+  # PostgreSQL для метаданных Airflow
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - target: 5432
+        published: "5432"
+        protocol: tcp
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+    networks:
+      - app-network
+
+  # Redis для Celery
+  redis:
+    image: redis:7.2-bookworm
+    container_name: redis
+    expose:
+      - 6379
+    ports:
+      - target: 6379
+        published: "${REDIS_PORT:-6379}"
+        protocol: tcp
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 30s
+      retries: 50
+      start_period: 30s
+    restart: always
+    networks:
+      - app-network
+
+  # Airflow Webserver
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    container_name: airflow-webserver
+    ports:
+      - target: 8080
+        published: "8080"
+        protocol: tcp
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f /opt/airflow/airflow-webserver.pid ]"]
+      interval: 30s
+      timeout: 30s
+      retries: 20
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    networks:
+      - app-network
+
+  # Airflow Scheduler
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    container_name: airflow-scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f /opt/airflow/airflow-scheduler.pid ]"]
+      interval: 30s
+      timeout: 30s
+      retries: 20
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    networks:
+      - app-network
+
+  # Airflow Worker
+  airflow-worker:
+    <<: *airflow-common
+    command: celery worker
+    container_name: airflow-worker
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - 'celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"'
+      interval: 10s
+      timeout: 45s
+      retries: 5
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    networks:
+      - app-network
+
+  # Airflow Init
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: ["/bin/bash", "-c"]
+    container_name: airflow-init
+    command:
+      - |
+        mkdir -p /sources/logs /sources/dags /sources/plugins
+        chown -R "50000:0" /sources/{logs,dags,plugins}
+        exec /entrypoint airflow version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD}
+    user: "0:0"
+    volumes:
+      - .:/sources
+    networks:
+      - app-network
+
+  # Zookeeper
+  zookeeper:
+    image: bitnami/zookeeper:3.8
+    container_name: zookeeper
+    ports:
+      - target: 2181
+        published: "2181"
+        protocol: tcp
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    volumes:
+      - zookeeper_data:/bitnami
+    networks:
+      - app-network
+
+  # Kafka
+  kafka:
+    image: bitnami/kafka:3.6.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - target: 9092
+        published: "9092"
+        protocol: tcp
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_ADVERTISED_LISTENER}
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    volumes:
+      - kafka_data:/bitnami
+    networks:
+      - app-network
+
+  # ClickHouse
+  clickhouse:
+    build:
+      context: .
+      dockerfile: Dockerfile.clickhouse
+    container_name: clickhouse
+    ports:
+      - target: 8123
+        published: "${CLICKHOUSE_PORT_HTTP:-8123}"
+        protocol: tcp
+      - target: 9000
+        published: "${CLICKHOUSE_PORT_TCP:-9000}"
+        protocol: tcp
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse_config:/etc/clickhouse-server/config.d
+      - ./clickhouse_users:/etc/clickhouse-server/users.d
+    environment:
+      CLICKHOUSE_MONITORING_USER: ${CLICKHOUSE_MONITORING_USER}
+      CLICKHOUSE_MONITORING_PASSWORD: ${CLICKHOUSE_MONITORING_PASSWORD}
+    networks:
+      - app-network
+
+  # Superset
+  superset:
+    image: apache/superset:latest
+    container_name: superset
+    ports:
+      - target: 8088
+        published: "8088"
+        protocol: tcp
+    depends_on:
+      - clickhouse
+    environment:
+      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY}
+    volumes:
+      - superset_data:/app/superset_home
+    networks:
+      - app-network
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        pip install clickhouse-connect
+        superset db upgrade
+        superset fab create-admin \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --email admin@example.com \
+          --password admin
+        superset init
+        gunicorn -b 0.0.0.0:8088 --access-logfile - --error-logfile - -w 4 "superset.app:create_app()"
+
+  # MinIO
+  minio:
+    image: minio/minio
+    container_name: minio
+    ports:
+      - target: 9000
+        published: "9002"
+        protocol: tcp
+      - target: 9001
+        published: "9001"
+        protocol: tcp
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - app-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - target: 9090
+        published: "${PROMETHEUS_PORT:-9090}"
+        protocol: tcp
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-enterprise:latest
+    container_name: grafana
+    ports:
+      - target: 3000
+        published: "${GRAFANA_PORT:-3000}"
+        protocol: tcp
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - clickhouse
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  clickhouse-metrics:
+    build:
+      context: .
+      dockerfile: Dockerfile.clickhouse-metrics
+    container_name: clickhouse-metrics
+    ports:
+      - target: 9363
+        published: "9363"
+        protocol: tcp
+    depends_on:
+      - clickhouse
+    networks:
+      - app-network
+
+#  kafka-lag-exporter:
+#    build:
+#      context: ./kafka-lag-exporter
+#    container_name: kafka-lag-exporter
+#    ports:
+#      - "9364:9364"
+#    depends_on:
+#      - kafka
+
+volumes:
+  zookeeper_data:
+  kafka_data:
+  clickhouse_data:
+  postgres-db-volume:
+  minio_data:
+  superset_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  app-network:
+    driver: bridge

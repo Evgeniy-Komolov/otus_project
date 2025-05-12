@@ -1,0 +1,6 @@
+# Базовый образ
+FROM ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.10.5}
+
+# Установка зависимостей
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt

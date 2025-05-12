@@ -1,0 +1,10 @@
+<clickhouse>
+    <metric_log>
+        <database>system</database>
+        <table>metric_log</table>
+        <collect_interval_milliseconds>1000</collect_interval_milliseconds>
+        <metrics>true</metrics>
+        <events>true</events>
+        <profile_events>true</profile_events>
+    </metric_log>
+</clickhouse>

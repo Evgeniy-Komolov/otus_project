@@ -1,0 +1,5 @@
+<!-- vi /etc/clickhouse-server/config.d/listens.xml -->
+
+<clickhouse>
+        <listen_host>0.0.0.0</listen_host>
+</clickhouse>

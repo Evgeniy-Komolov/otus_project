@@ -1,0 +1,12 @@
+apiVersion: 1
+datasources:
+  - name: ClickHouse
+    type: alexanderzobnin-clickhouse
+    url: http://clickhouse:8123
+    access: proxy
+    basicAuth: false
+    isDefault: true
+    version: 1
+    editable: true
+    jsonData:
+      defaultDatabase: default
