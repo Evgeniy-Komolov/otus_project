@@ -208,6 +208,9 @@ services:
       - target: 9000
         published: "${CLICKHOUSE_PORT_TCP:-9000}"
         protocol: tcp
+      - target: 9363
+        published: 9363
+        protocol: tcp
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./clickhouse_config:/etc/clickhouse-server/config.d
@@ -299,34 +302,33 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/provisioning:/etc/grafana/provisioning/dashboards
     depends_on:
       - clickhouse
     networks:
       - app-network
     restart: unless-stopped
 
-  clickhouse-metrics:
-    build:
-      context: .
-      dockerfile: Dockerfile.clickhouse-metrics
-    container_name: clickhouse-metrics
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
     ports:
-      - target: 9363
-        published: "9363"
+      - target: 9308
+        published: "9308"
         protocol: tcp
+    environment:
+      KAFKA_EXPORTER_KAFKA_VERSION: "3.6.0"
+      KAFKA_EXPORTER_SASL_USERNAME: ${KAFKA_SASL_USER:-""}
+      KAFKA_EXPORTER_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:-""}
+    command:
+      - "--kafka.server=kafka:9092"
+      - "--topic.filter=.*"
+      - "--group.filter=.*"
     depends_on:
-      - clickhouse
+      - kafka
     networks:
       - app-network
-
-#  kafka-lag-exporter:
-#    build:
-#      context: ./kafka-lag-exporter
-#    container_name: kafka-lag-exporter
-#    ports:
-#      - "9364:9364"
-#    depends_on:
-#      - kafka
 
 volumes:
   zookeeper_data:

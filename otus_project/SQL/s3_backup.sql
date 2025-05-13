@@ -25,28 +25,40 @@ CREATE TABLE otus.example_table_backup AS otus.example_table_ss_clickhouse;
 
 
 
-INSERT INTO FUNCTION s3('http://minio:9000/otus-project/backup/example_table_backup.csv.gz',
-                         'otus_clickhouse',
-                         'qwert1234',
-                         'CSV',
+INSERT INTO FUNCTION s3('http://minio:9000/otus-project/backup/example_table_backup.parquet.gz',
+                           'my_s3_profile',
+                         'parquet',
                          'id UInt32, name String, value Float32, created_at DateTime',
                          'gzip')
 SELECT * FROM otus.example_table_ss_clickhouse;
 
 
+SET output_format_parquet_compression_method = 'gzip';
 
--- INSERT INTO otus.example_table_backup
-SELECT * FROM s3('http://minio:9000/otus-project/backup/example_table_backup.csv.gz',
+INSERT INTO FUNCTION s3(
+    'http://minio:9000/otus-project/backup/posting_data.parquet.gz',
                            'otus_clickhouse',
                            'qwert1234',
-                           'CSV',
-                           'id UInt32, name String, value Float32, created_at DateTime',
+                           'parquet',
+                           'posting_id UInt32, order_time DateTime, adress String, status String, clickhoue_timestamp DateTime',
+                           'gzip'
+)
+SELECT * FROM otus.posting_data;
+
+
+
+-- INSERT INTO otus.example_table_backup
+SELECT * FROM s3('http://minio:9000/otus-project/backup/posting_data.parquet.gz',
+                           'otus_clickhouse',
+                           'qwert1234',
+                           'parquet',
+                           'posting_id UInt32, order_time DateTime, adress String, status String, clickhoue_timestamp DateTime',
                            'gzip');
 
 SELECT *
-FROM s3('http://minio:9000/otus-project/backup/example_table_backup.csv.gz',
+FROM s3('http://minio:9000/otus-project/backup/example_table_backup.parquet.gz',
         'my_s3_profile',
-        'CSV',
+        'parquet',
         'id UInt32, name String, value Float32, created_at DateTime',
         'gzip');
 
@@ -77,3 +89,11 @@ FROM s3(
     'id UInt32, name String, value Float32, created_at DateTime',
     'gzip'
 );
+
+
+INSERT INTO FUNCTION s3(
+    'http://minio:9000/otus-project/backup/example_table_backup.parquet',
+    'my_s3_profile',
+    'Parquet'
+)
+SELECT * FROM otus.example_table_ss_clickhouse;

@@ -1,0 +1,10 @@
+<!-- vi /etc/clickhouse-server/config.d/listens.xml -->
+<yandex>
+    <prometheus>
+        <endpoint>/metrics</endpoint>
+        <port>9363</port>
+        <metrics>true</metrics>
+        <events>true</events>
+        <asynchronous_metrics>true</asynchronous_metrics>
+    </prometheus>
+</yandex>

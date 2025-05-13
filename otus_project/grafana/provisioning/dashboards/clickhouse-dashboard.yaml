@@ -1,11 +1,11 @@
 apiVersion: 1
 
 providers:
-  - name: 'Main Dashboards'
+  - name: 'ClickHouse Dashboards'
     orgId: 1
     folder: ''
     type: file
     disableDeletion: false
-    updateIntervalSeconds: 30
+    editable: true
     options:
-      path: /var/lib/grafana/dashboards
+      path: /etc/grafana/provisioning/dashboards

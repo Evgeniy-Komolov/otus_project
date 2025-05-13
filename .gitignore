@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-.env
+otus_project/.env
 run.py
 runner.py
 # C extensions

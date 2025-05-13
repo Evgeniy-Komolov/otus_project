@@ -5,7 +5,7 @@ import random
 import string
 import json
 from kafka import KafkaProducer
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 # Функция для генерации случайного адреса
@@ -23,7 +23,8 @@ def generate_status():
 # Функция для генерации случайных данных
 def generate_message():
     posting_id = random.randint(10000, 99999)
-    order_time = datetime.now().isoformat()
+    days = random.randint(1, 30)
+    order_time = (datetime.now() - timedelta(days=days)).isoformat()
     address = generate_address()
     status = generate_status()
 

@@ -1,40 +1,8 @@
 DROP TABLE otus.kafka_test;
 
-CREATE TABLE otus.kafka_test (
-    id UInt32,
-    name String
-) ENGINE = Kafka
-SETTINGS
-    kafka_broker_list = 'kafka:9092',
-    kafka_topic_list = 'topic-otus',
-    kafka_group_name = 'clickhouse-consumer-group',
-    kafka_format = 'JSONEachRow';
-
-
 set stream_like_engine_allow_direct_select = 1;
 SELECT * FROM otus.posting_kafka LIMIT 5;
 
-SELECT *
-FROM kafka('kafka:9092', 'topic-otus', 'clickhouse-consumer-group-test', 'JSONEachRow', 'id UInt32, name String')
-LIMIT 5;
-
-DROP TABLE IF EXISTS otus.kafka_test;
-
-CREATE TABLE otus.kafka_test (
-    id UInt32,
-    name String
-) ENGINE = Kafka
-SETTINGS
-    kafka_broker_list = 'kafka:9092',
-    kafka_topic_list = 'topic-otus',
-    kafka_group_name = 'clickhouse-consumer-group-new',
-    kafka_format = 'JSONEachRow';
-
-CREATE TABLE otus.kafka_messages (
-    id UInt32,
-    name String
-) ENGINE = MergeTree
-ORDER BY id;
 
 CREATE MATERIALIZED VIEW otus.kafka_consumer TO otus.kafka_messages AS
 SELECT * FROM otus.kafka_test;
@@ -82,6 +50,21 @@ SELECT
     now() AS clickhoue_timestamp
 FROM otus.posting_kafka;
 
+
+
+DROP TABLE otus.posting_mv_stop;
+
+CREATE MATERIALIZED VIEW otus.posting_mv_stop TO otus.posting_data_stop AS
+SELECT
+    JSONExtractUInt(message, 'posting_id') AS posting_id,
+    parseDateTimeBestEffort(JSONExtractString(message, 'order_time')) AS order_time,
+    JSONExtractString(message, 'adress') AS adress,
+    JSONExtractString(message, 'status') AS status,
+    now() AS clickhoue_timestamp
+FROM otus.posting_kafka;
+
+
+SELECT status FROM system. WHERE table = 'posting_mv';
 
 SELECT * FROM otus.posting_data;
 
