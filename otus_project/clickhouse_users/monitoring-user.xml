@@ -1,9 +1,0 @@
-<clickhouse>
-  <users>
-    <monitoring>
-      <password>metrics</password>
-      <profile>readonly</profile>
-      <quota>default</quota>
-    </monitoring>
-  </users>
-</clickhouse>
