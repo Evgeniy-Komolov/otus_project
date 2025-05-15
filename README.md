@@ -4,7 +4,7 @@
 
 ## Порядок выполнения работы
 ### Подготовка инфраструктурвы
-1. Подготовка [docker-compose.yml](otus_project/docker-compose.yml) под сервисы Clcikhouse, Airflow, S3, `Prometheus`, kafka-exporter.
+1. Подготовка [docker-compose.yml](otus_project/docker-compose.yml) под сервисы `Clcikhouse`, `Airflow`, `S3`, `Prometheus`, `kafka-exporter`.
 2. Отладка [docker-compose.yml](otus_project/docker-compose.yml) до состояния "запуск по кнопке".
 3. Настройка необходимого взаимодействия `Clcikhouse` с `Prometheus`.
 
